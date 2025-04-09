@@ -37,8 +37,10 @@ jobs:
     - name: Gitleaks Installation
       run: |
         curl -sSL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks-linux-amd64 -o gitleaks
+        file gitleaks  # vérifie que c'est bien un binaire ELF
         chmod +x gitleaks
-        sudo mv gitleaks /usr/local/bin/
+        sudo mv gitleaks /usr/local/bin/gitleaks
+
       # sudo apt install gitleaks -y
 
     - name: Gitleaks Code Scan
