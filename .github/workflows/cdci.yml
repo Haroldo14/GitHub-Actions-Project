@@ -36,11 +36,11 @@ jobs:
       run: trivy fs --format table -o fs-report.json .
     - name: Gitleaks Installation
       run: |
-        curl -sSL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks-linux-amd64 -o gitleaks
-        file gitleaks  # vérifie que c'est bien un binaire ELF
+        VERSION=$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep tag_name | cut -d '"' -f 4)
+        curl -sSL -o gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/${VERSION}/gitleaks_${VERSION#v}_linux_x64.tar.gz
+        tar -xvzf gitleaks.tar.gz gitleaks
         chmod +x gitleaks
         sudo mv gitleaks /usr/local/bin/gitleaks
-
       # sudo apt install gitleaks -y
 
     - name: Gitleaks Code Scan
