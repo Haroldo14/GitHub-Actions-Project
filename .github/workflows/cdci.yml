@@ -71,6 +71,8 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
         cache: maven
+    - name: List files in app folder
+      run: ls -la app
     - name: Build Project
       run: mvn package
     - name: Build Project
