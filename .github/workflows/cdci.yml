@@ -123,6 +123,8 @@ jobs:
     - name: Build and push
       uses: docker/build-push-action@v6
       with:
+        context: .
+        file: ./Dockerfile
         push: true
         tags: haroldo1414/gcbankapp:latest
 
