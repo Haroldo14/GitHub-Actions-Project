@@ -127,6 +127,8 @@ jobs:
       with:
         context: .
         file: ./Dockerfile
+        build-contexts: |
+          app=./app
         push: true
         tags: haroldo1414/gcbankapp:latest
 
