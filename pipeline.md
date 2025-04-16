@@ -1,0 +1,131 @@
+name: CICD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  compile:
+    runs-on: self-hosted
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: maven
+    - name: Build with Maven
+      run: mvn compile
+  
+  security-check:
+    runs-on: self-hosted
+    needs: compile
+    steps:
+    - uses: actions/checkout@v4
+    - name: Trivy Installation
+      run: |
+        sudo apt-get install wget apt-transport-https gnupg lsb-release -y
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+        echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update -y
+        sudo apt-get install trivy -y      
+    - name: Trivy FS Scan
+      run: trivy fs --format table -o fs-report.json .
+    - name: Gitleaks Installation
+      run: |
+        VERSION=$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep tag_name | cut -d '"' -f 4)
+        curl -sSL -o gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/${VERSION}/gitleaks_${VERSION#v}_linux_x64.tar.gz
+        tar -xvzf gitleaks.tar.gz gitleaks
+        chmod +x gitleaks
+        sudo mv gitleaks /usr/local/bin/gitleaks
+      # sudo apt install gitleaks -y
+
+    - name: Gitleaks Code Scan
+      run: gitleaks detect -s . -r gitleaks-report.json -f json
+      # run: gitleaks detect source . -r gitleaks-report.json -f json
+
+
+  test:
+    runs-on: self-hosted
+    needs:  security-check
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: maven
+    - name: Unit Test Cases
+      run: mvn test
+
+  build_project_and_sonar_scan:
+    runs-on: self-hosted
+    needs:  test
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: maven
+    #- name: List files in app folder
+    #  run: ls -la app
+    - name: Build Project
+      run: mvn package
+    - name: Upload JAR artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-jar
+        path: target/*.jar
+      
+    - uses: actions/checkout@v4
+      with:
+        # Disabling shallow clones is recommended for improving the relevancy of reporting
+        fetch-depth: 0
+    - name: SonarQube Scan
+      uses: SonarSource/sonarqube-scan-action@v5.1.0 # Ex: v4.1.0, See the latest version at https://github.com/marketplace/actions/official-sonarqube-scan
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+    # Check the Quality Gate status.
+    - name: SonarQube Quality Gate check
+      id: sonarqube-quality-gate-check
+      uses: sonarsource/sonarqube-quality-gate-action@master
+      with:
+        pollingTimeoutSec: 600
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }} #OPTIONAL
+  buils_docker_image_and_push:
+    runs-on: self-hosted
+    needs: build_project_and_sonar_scan
+    steps:
+    - uses: actions/checkout@v4
+    - name: Download JAR artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: app-jar
+        path: app  # this will download JAR to ./app folder
+
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ vars.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    - name: Build and push
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: ./Dockerfile
+        build-contexts: |
+          app=./app
+        push: true
+        tags: haroldo1414/gcbankapp:latest
